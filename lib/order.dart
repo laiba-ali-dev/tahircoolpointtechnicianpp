@@ -1,334 +1,112 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
-import 'package:syncfusion_flutter_charts/charts.dart';
-import 'package:tahircoolpointtechnician/home.dart';
-import 'package:tahircoolpointtechnician/profile.dart';
 
-void main() {
-  runApp(const OrderPage());
+class OrderPage extends StatefulWidget {
+  @override
+  _OrderListScreenState createState() => _OrderListScreenState();
 }
 
-class OrderPage extends StatelessWidget {
-  const OrderPage({super.key});
+class _OrderListScreenState extends State<OrderPage> {
+  String? technicianId;
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.red,
-        scaffoldBackgroundColor: Colors.black,
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: IconThemeData(color: Colors.white),
-        ),
-        textTheme: const TextTheme(
-          bodyLarge: TextStyle(color: Colors.white),
-          bodyMedium: TextStyle(color: Colors.white),
-          titleLarge: TextStyle(color: Colors.white),
-        ),
-        cardTheme: CardTheme(
-          color: Colors.grey[900],
-          margin: const EdgeInsets.all(8),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        dataTableTheme: DataTableThemeData(
-          decoration: BoxDecoration(
-            color: Colors.grey[900],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          headingRowColor: MaterialStateProperty.resolveWith(
-            (states) => Colors.red,
-          ),
-          dataRowColor: MaterialStateProperty.resolveWith(
-            (states) => Colors.grey[800],
-          ),
-          dividerThickness: 1,
-          dataTextStyle: const TextStyle(color: Colors.white),
-          headingTextStyle: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-      home: const ServiceRequestsPage(),
-    );
-  }
-}
-
-class ServiceRequestsPage extends StatefulWidget {
-  const ServiceRequestsPage({super.key});
-
-  @override
-  State<ServiceRequestsPage> createState() => _ServiceRequestsPageState();
-}
-
-class _ServiceRequestsPageState extends State<ServiceRequestsPage> {
-  // Sample data for the table
-  final List<ServiceRequest> requests = [
-    ServiceRequest('John Doe', '555-1234', 'Plumbing Repair', '123 Main St'),
-    ServiceRequest('Jane Smith', '555-5678', 'Electrical Work', '456 Oak Ave'),
-    ServiceRequest('Bob Johnson', '555-9012', 'HVAC Service', '789 Pine Rd'),
-    ServiceRequest(
-      'Alice Williams',
-      '555-3456',
-      'Appliance Repair',
-      '321 Elm St',
-    ),
-    ServiceRequest('Charlie Brown', '555-7890', 'Carpentry', '654 Maple Dr'),
-  ];
-
-  void _showMapModal(String address) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text(
-            'Service Location',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 300,
-            child: Column(
-              children: [
-                Expanded(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Center(
-                      child: Text(
-                        'Map would show here for:\n$address',
-                        style: const TextStyle(color: Colors.white),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'Address: $address',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Close', style: TextStyle(color: Colors.red)),
-            ),
-          ],
-        );
-      },
-    );
+  void initState() {
+    super.initState();
+    fetchTechnicianId();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        title: Row(
-          children: [
-            Image.asset(
-              'images/icon.png',
-              height: 30,
-              width: 30,
-              errorBuilder:
-                  (context, error, stackTrace) =>
-                      const Icon(Icons.business, color: Colors.red),
-            ),
-            const SizedBox(width: 10),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications, color: Colors.black),
-            onPressed: () {
-              // Notification action
-            },
-          ),
-        ],
-      ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+  Future<void> fetchTechnicianId() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+ final technicianSnapshot = await FirebaseFirestore.instance
+    .collection('technicians')
+    .doc(user.uid)
+    .get();
+
+      setState(() 
+      {
+        technicianId = technicianSnapshot.id;
+      });
+    }
+  }
+
+  List<DataRow> _buildOrderRows(List<DocumentSnapshot> orders) {
+    return orders.map((order) {
+      final data = order.data() as Map<String, dynamic>;
+      return DataRow(cells: [
+        DataCell(Text(data['serviceName'] ?? '')),
+        DataCell(Text(data['customerName'] ?? '')),
+        DataCell(Text(data['status'] ?? '')),
+        DataCell(Text(data['date'] ?? '')),
+      ]);
+    }).toList();
+  }
+
+  Widget _buildOrderSection(String title, List<DocumentSnapshot> orders) {
+    return orders.isEmpty
+        ? SizedBox()
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Active Service Requests',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: DataTable(
-                          columns: const [
-                            DataColumn(label: Text('Name')),
-                            DataColumn(label: Text('Phone')),
-                            DataColumn(label: Text('Service Name')),
-                            DataColumn(label: Text('Actions')),
-                          ],
-                          rows:
-                              requests.map((request) {
-                                return DataRow(
-                                  cells: [
-                                    DataCell(
-                                      Text(
-                                        request.name,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        request.phone,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Text(
-                                        request.serviceName,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                    DataCell(
-                                      Row(
-                                        children: [
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.map,
-                                              color: Colors.red,
-                                            ),
-                                            onPressed:
-                                                () => _showMapModal(
-                                                  request.address,
-                                                ),
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.play_arrow,
-                                              color: Colors.green,
-                                            ),
-                                            onPressed: () {
-                                              // Start service action
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    'Starting service for ${request.name}',
-                                                  ),
-                                                  backgroundColor: Colors.green,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.cancel,
-                                              color: Colors.red,
-                                            ),
-                                            onPressed: () {
-                                              // Cancel service action
-                                              ScaffoldMessenger.of(
-                                                context,
-                                              ).showSnackBar(
-                                                SnackBar(
-                                                  content: Text(
-                                                    'Cancelled service for ${request.name}',
-                                                  ),
-                                                  backgroundColor: Colors.red,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              }).toList(),
-                        ),
-                      ),
-                    ],
-                  ),
+              SizedBox(height: 20),
+              Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: DataTable(
+                  columns: [
+                    DataColumn(label: Text('address')),
+                    DataColumn(label: Text('productPrice')),
+                    DataColumn(label: Text('productTitle')),
+                    DataColumn(label: Text('timestamp')),
+                  ],
+                  rows: _buildOrderRows(orders),
                 ),
               ),
             ],
-          ),
-        ),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        color: Colors.black,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(
-              icon: const Icon(Icons.home, color: Colors.white),
-              onPressed: () {
-                // Navigate to home screen using a widget
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => HomePage()),
-                );
-              },
-            ),
+          );
+  }
 
-            IconButton(
-              icon: const Icon(Icons.list_alt, color: Colors.red),
-              onPressed: () {
-                // Navigate to home screen using a widget
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => OrderPage()),
-                );
-              },
-            ),
+  @override
+  Widget build(BuildContext context) {
+    if (technicianId == null) {
+      return Scaffold(
+        appBar: AppBar(title: Text('Orders')),
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
 
-            IconButton(
-              icon: const Icon(Icons.person, color: Colors.white),
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => ProfilePage()),
-                );
-              },
+    return Scaffold(
+      appBar: AppBar(title: Text('Orders')),
+      body: StreamBuilder<QuerySnapshot>(
+        stream: FirebaseFirestore.instance
+            .collection('orders')
+            .where('technicianId', isEqualTo: technicianId)
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (!snapshot.hasData) return Center(child: CircularProgressIndicator());
+
+          final allOrders = snapshot.data!.docs;
+
+          final assignedOrders = allOrders.where((order) => order['status'] == 'Assigned').toList();
+          final inProgressOrders = allOrders.where((order) => order['status'] == 'In-Progress').toList();
+          final completedOrders = allOrders.where((order) => order['status'] == 'Completed').toList();
+          final requestedOrders = allOrders.where((order) => order['status'] == 'requested').toList();
+
+          return SingleChildScrollView(
+            padding: EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildOrderSection('Assigned Orders', assignedOrders),
+                _buildOrderSection('In Progress Orders', inProgressOrders),
+                _buildOrderSection('Completed Orders', completedOrders),
+                _buildOrderSection('Requested Orders', requestedOrders),
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
-}
-
-class ServiceRequest {
-  ServiceRequest(this.name, this.phone, this.serviceName, this.address);
-
-  final String name;
-  final String phone;
-  final String serviceName;
-  final String address;
 }

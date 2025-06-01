@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:tahircoolpointtechnician/order.dart';
 
@@ -11,136 +15,245 @@ class ProfilePage extends StatefulWidget {
 }
 
 class _ProfilePageState extends State<ProfilePage> {
-  final String username = "John Doe";
-  final String email = "john.doe@example.com";
+String username = "";
+String email = "";
+
+// Hash function to convert plain password to hash
+String hashPassword(String password) {
+  final bytes = utf8.encode(password);
+  final digest = sha256.convert(bytes);
+  return digest.toString();
+}
+@override
+void initState() {
+  super.initState();
+  _fetchTechnicianData();
+}
+
+
+void _fetchTechnicianData() async {
+  try {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // Assuming 'technicians' collection uses email as document field
+      final snapshot = await FirebaseFirestore.instance
+          .collection('technicians')
+          .where('email', isEqualTo: user.email)
+          .limit(1)
+          .get();
+
+      if (snapshot.docs.isNotEmpty) {
+        final data = snapshot.docs.first.data();
+        setState(() {
+          username = data['full_name'] ?? 'No Name';
+          email = data['email'] ?? user.email!;
+        });
+      }
+    }
+  } catch (e) {
+    print("Error fetching technician data: $e");
+  }
+}
+
+
 
   void _showEmailUpdateDialog() {
-    TextEditingController emailController = TextEditingController(text: email);
-    
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text(
-            'Update Email',
-            style: TextStyle(color: Colors.white),
+  TextEditingController emailController = TextEditingController(text: email);
+
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text(
+          'Update Email',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: emailController,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            labelText: 'New Email',
+            labelStyle: TextStyle(color: Colors.white70),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white70),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.red),
+            ),
           ),
-          content: TextField(
-            controller: emailController,
-            style: const TextStyle(color: Colors.white),
-            decoration: const InputDecoration(
-              labelText: 'New Email',
-              labelStyle: TextStyle(color: Colors.white70),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white70),
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.red),
-              ),
+          keyboardType: TextInputType.emailAddress,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white),
             ),
-            keyboardType: TextInputType.emailAddress,
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white),
-              ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-              ),
-              onPressed: () {
-                // Here you would typically validate and update the email
-                setState(() {
-                  // email = emailController.text;
-                });
-                Navigator.pop(context);
-              },
-              child: const Text('Update'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+            onPressed: () async {
+              final newEmail = emailController.text.trim();
+              final user = FirebaseAuth.instance.currentUser;
+
+              if (user != null && newEmail.isNotEmpty && newEmail != email) {
+                try {
+                await user.verifyBeforeUpdateEmail(newEmail);
+
+
+                  // Update Firestore
+                  final query = await FirebaseFirestore.instance
+                      .collection('technicians')
+                      .where('email', isEqualTo: email)
+                      .limit(1)
+                      .get();
+
+                  if (query.docs.isNotEmpty) {
+                    await query.docs.first.reference.update({'email': newEmail});
+                  }
+
+                  setState(() {
+                    email = newEmail;
+                  });
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text("Email updated successfully")),
+                  );
+                } on FirebaseAuthException catch (e) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text("Error: ${e.message}")),
+                  );
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text("Please enter a valid and different email")),
+                );
+              }
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      );
+    },
+  );
+}
+
 
   void _showPasswordChangeDialog() {
-    TextEditingController oldPasswordController = TextEditingController();
-    TextEditingController newPasswordController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          backgroundColor: Colors.grey[900],
-          title: const Text(
-            'Change Password',
-            style: TextStyle(color: Colors.white),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: oldPasswordController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'Old Password',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white70),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.red),
-                  ),
+  TextEditingController oldPasswordController = TextEditingController();
+  TextEditingController newPasswordController = TextEditingController();
+  
+  showDialog(
+    context: context,
+    builder: (BuildContext context) {
+      return AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text(
+          'Change Password',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: oldPasswordController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'Old Password',
+                labelStyle: TextStyle(color: Colors.white70),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white70),
                 ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: newPasswordController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  labelText: 'New Password',
-                  labelStyle: TextStyle(color: Colors.white70),
-                  enabledBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.white70),
-                  ),
-                  focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Colors.red),
-                  ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.red),
                 ),
-                obscureText: true,
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text(
-                'Cancel',
-                style: TextStyle(color: Colors.white),
-              ),
+              obscureText: true,
             ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
+            const SizedBox(height: 16),
+            TextField(
+              controller: newPasswordController,
+              style: const TextStyle(color: Colors.white),
+              decoration: const InputDecoration(
+                labelText: 'New Password',
+                labelStyle: TextStyle(color: Colors.white70),
+                enabledBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.white70),
+                ),
+                focusedBorder: UnderlineInputBorder(
+                  borderSide: BorderSide(color: Colors.red),
+                ),
               ),
-              onPressed: () {
-                // Here you would typically validate and update the password
-                Navigator.pop(context);
-              },
-              child: const Text('Change Password'),
+              obscureText: true,
             ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white),
+            ),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+           onPressed: () async {
+  final oldPassword = oldPasswordController.text.trim();
+  final newPassword = newPasswordController.text.trim();
+  final user = FirebaseAuth.instance.currentUser;
+
+  if (user != null && oldPassword.isNotEmpty && newPassword.length >= 6) {
+    final cred = EmailAuthProvider.credential(
+      email: user.email!,
+      password: oldPassword,
+    );
+
+    try {
+      await user.reauthenticateWithCredential(cred);
+      await user.updatePassword(newPassword);
+
+      String hashedPassword = hashPassword(newPassword);
+      await FirebaseFirestore.instance
+          .collection('technicians')
+          .doc(user.uid)
+          .update({'password': hashedPassword});
+
+      // Close dialog only after successful update
+      Navigator.pop(context);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Password updated successfully")),
+      );
+    } on FirebaseAuthException catch (e) {
+      // Dialog stays open on error, show error message
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error: ${e.message}")),
+      );
+    }
+  } else {
+    // Dialog stays open on invalid input, show message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please enter valid old and new passwords")),
     );
   }
+},
 
+            child: const Text('Change Password'),
+          ),
+        ],
+      );
+    },
+  );
+}
   void _logout() {
     // Implement logout logic here
     Navigator.pushReplacement(
@@ -191,7 +304,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     const Text(
                       'Profile Information',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: Colors.red,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -199,6 +312,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     const SizedBox(height: 20),
                     _buildProfileItem(
                       icon: Icons.person,
+                    
                       label: 'Username',
                       value: username,
                     ),
@@ -260,7 +374,7 @@ class _ProfilePageState extends State<ProfilePage> {
               onPressed: () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const OrderPage()),
+                  MaterialPageRoute(builder: (context) =>  OrderPage()),
                 );
               },
             ),

@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:crypto/crypto.dart';
-
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // Import Firebase Auth
 import 'package:flutter/material.dart';
 import 'package:tahircoolpointtechnician/home.dart';
 
@@ -13,8 +13,10 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMixin {
-  final TextEditingController _emailController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  bool _isLoading = false;
   bool _obscurePassword = true;
   late AnimationController _animationController;
   late Animation<double> _animation;
@@ -37,56 +39,59 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
 
   @override
   void dispose() {
+    _emailController.dispose();
+    _passwordController.dispose();
     _animationController.dispose();
     super.dispose();
   }
 
-void _login() async {
-  String email = _emailController.text.trim();
-  String password = _passwordController.text.trim();
+  Future<void> _login() async {
+    if (!_formKey.currentState!.validate()) return;
 
-  if (email.isEmpty || password.isEmpty) {
-    _showError('Please enter email and password');
-    return;
-  }
+    setState(() => _isLoading = true);
 
-  try {
-    // Firestore se email ke basis pe technician ko fetch karo
-    final snapshot = await FirebaseFirestore.instance
-        .collection('technicians')
-        .where('email', isEqualTo: email)
-        .get();
+    try {
+      String email = _emailController.text.trim();
+      String password = _passwordController.text.trim();
 
-    if (snapshot.docs.isNotEmpty) {
-      // Document mil gaya
-      var userData = snapshot.docs.first.data();
+      // Use Firebase Auth to sign in
+      UserCredential userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
 
-      // Firestore mein jo password hashed stored hai
-      String storedHashedPassword = userData['password'];
+      // If sign-in is successful, you can check Firestore for additional user data
+      final snapshot = await FirebaseFirestore.instance
+          .collection('technicians')
+          .where('email', isEqualTo: email)
+          .get();
 
-      // User ke password ko hash karo (sha256 example)
-      var bytes = utf8.encode(password);
-      var hashedPassword = sha256.convert(bytes).toString();
-
-      // Password match karo
-      if (storedHashedPassword == hashedPassword) {
-        // Password match ho gaya, login successful
+      if (snapshot.docs.isNotEmpty) {
+        // User is authenticated and exists in Firestore
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const HomePage()),
         );
       } else {
-        // Password galat hai
-        _showError('Incorrect password');
+        _showError('Technician not found');
       }
-    } else {
-      // Email nahi mila firestore mein
-      _showError('Technician not found');
+    } on FirebaseAuthException catch (e) {
+      // Handle specific Firebase Auth errors
+      if (e.code == 'user-not-found') {
+        _showError('No user found for that email.');
+      } else if (e.code == 'wrong-password') {
+        _showError('Incorrect password.');
+      } else {
+        _showError('Error: ${e.message}');
+      }
+    } catch (e) {
+      _showError('Error: ${e.toString()}');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
-  } catch (e) {
-    _showError('Error: ${e.toString()}');
   }
-}
 
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -132,146 +137,160 @@ void _login() async {
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const SizedBox(height: 60),
-              ScaleTransition(
-                scale: _animation,
-                child: Center(
-                  child: Image.asset(
-                    'images/icon.png',
-                    height: 120,
-                    width: 120,
-                    errorBuilder: (context, error, stackTrace) =>
-                        const Icon(Icons.business, color: Colors.red, size: 100),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 40),
-              Focus(
-                onFocusChange: (hasFocus) => setState(() {}),
-                child: _buildNeonInputField(
-                  hasFocus: _emailController.text.isNotEmpty || FocusScope.of(context).hasFocus,
-                  child: TextField(
-                    controller: _emailController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Email',
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      prefixIcon: const Icon(Icons.email, color: Colors.red),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(color: Colors.white70),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(color: Colors.white70),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(color: Colors.red, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[850],
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const SizedBox(height: 60),
+                ScaleTransition(
+                  scale: _animation,
+                  child: Center(
+                    child: Image.asset(
+                      'images/icon.png',
+                      height: 120,
+                      width: 120,
+                      errorBuilder: (context, error, stackTrace) =>
+                          const Icon(Icons.business, color: Colors.red, size: 100),
                     ),
-                    keyboardType: TextInputType.emailAddress,
-                    onChanged: (_) => setState(() {}),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Focus(
-                onFocusChange: (hasFocus) => setState(() {}),
-                child: _buildNeonInputField(
-                  hasFocus: _passwordController.text.isNotEmpty || FocusScope.of(context).hasFocus,
-                  child: TextField(
-                    controller: _passwordController,
-                    style: const TextStyle(color: Colors.white),
-                    obscureText: _obscurePassword,
-                    decoration: InputDecoration(
-                      labelText: 'Password',
-                      labelStyle: const TextStyle(color: Colors.white70),
-                      prefixIcon: const Icon(Icons.lock, color: Colors.red),
-                      suffixIcon: IconButton(
-                        icon: Icon(
-                          _obscurePassword ? Icons.visibility : Icons.visibility_off,
-                          color: Colors.white70,
+                const SizedBox(height: 40),
+                Focus(
+                  onFocusChange: (hasFocus) => setState(() {}),
+                  child: _buildNeonInputField(
+                    hasFocus: _emailController.text.isNotEmpty || FocusScope.of(context).hasFocus,
+                    child: TextFormField(
+                      controller: _emailController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'Email',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(Icons.email, color: Colors.red),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.white70),
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _obscurePassword = !_obscurePassword;
-                          });
-                        },
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.white70),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.red, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[850],
                       ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(color: Colors.white70),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(color: Colors.white70),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(30),
-                        borderSide: const BorderSide(color: Colors.red, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.grey[850],
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) => value!.isEmpty ? 'Enter your email' : null,
+                      onChanged: (_) => setState(() {}),
                     ),
-                    onChanged: (_) => setState(() {}),
                   ),
                 ),
-              ),
-              const SizedBox(height: 30),
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.red.withOpacity(0.6),
-                      blurRadius: 10,
-                      spreadRadius: 1,
+                const SizedBox(height: 20),
+                Focus(
+                  onFocusChange: (hasFocus) => setState(() {}),
+                  child: _buildNeonInputField(
+                    hasFocus: _passwordController.text.isNotEmpty || FocusScope.of(context).hasFocus,
+                    child: TextFormField(
+                      controller: _passwordController,
+                      style: const TextStyle(color: Colors.white),
+                      obscureText: _obscurePassword,
+                      decoration: InputDecoration(
+                        labelText: 'Password',
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(Icons.lock, color: Colors.red),
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                            color: Colors.white70,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.white70),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.white70),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(30),
+                          borderSide: const BorderSide(color: Colors.red, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.grey[850],
+                      ),
+                      validator: (value) => value!.isEmpty ? 'Enter your password' : null,
+                      onChanged: (_) => setState(() {}),
                     ),
-                  ],
-                ),
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.red,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    elevation: 0,
                   ),
-                  onPressed: _login,
-                  child: const Text(
-                    'LOGIN',
+                ),
+                const SizedBox(height: 30),
+                AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(30),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.red.withOpacity(0.6),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red,
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(30),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: _isLoading ? null : _login,
+                    child: _isLoading
+                        ? const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              color: Colors.white,
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Text(
+                            'LOGIN',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                MouseRegion(
+                  onEnter: (_) => setState(() {}),
+                  onExit: (_) => setState(() {}),
+                  child: AnimatedDefaultTextStyle(
+                    duration: const Duration(milliseconds: 200),
                     style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                      color: _animationController.isAnimating ? Colors.red : Colors.white70,
+                      decoration: TextDecoration.underline,
+                    ),
+                    child: TextButton(
+                      onPressed: () {},
+                      child: const Text('Forgot Password?'),
                     ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 20),
-              MouseRegion(
-                onEnter: (_) => setState(() {}),
-                onExit: (_) => setState(() {}),
-                child: AnimatedDefaultTextStyle(
-                  duration: const Duration(milliseconds: 200),
-                  style: TextStyle(
-                    color: _animationController.isAnimating ? Colors.red : Colors.white70,
-                    decoration: TextDecoration.underline,
-                  ),
-                  child: TextButton(
-                    onPressed: () {},
-                    child: const Text('Forgot Password?'),
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
