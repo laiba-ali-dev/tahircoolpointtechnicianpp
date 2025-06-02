@@ -60,23 +60,28 @@ class _LoginPageState extends State<LoginPage> with SingleTickerProviderStateMix
         password: password,
       );
 
-      // If sign-in is successful, you can check Firestore for additional user data
+      // If sign-in is successful, check Firestore for technician data
       final snapshot = await FirebaseFirestore.instance
           .collection('technicians')
           .where('email', isEqualTo: email)
           .get();
 
       if (snapshot.docs.isNotEmpty) {
-        // User is authenticated and exists in Firestore
+        // Technician found, get technician ID
+        var technicianDoc = snapshot.docs.first;
+        var technicianId = technicianDoc.id;
+
+        // Pass technicianId to HomePage
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(builder: (context) => const HomePage()),
+          MaterialPageRoute(
+            builder: (context) => HomePage(),
+          ),
         );
       } else {
         _showError('Technician not found');
       }
     } on FirebaseAuthException catch (e) {
-      // Handle specific Firebase Auth errors
       if (e.code == 'user-not-found') {
         _showError('No user found for that email.');
       } else if (e.code == 'wrong-password') {
